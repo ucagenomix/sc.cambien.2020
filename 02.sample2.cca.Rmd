@@ -1,0 +1,117 @@
+```{r function section, echo=FALSE,include=FALSE}
+
+source("00.import.R")
+
+library(devtools)
+library(ggplot2)
+
+detach("package:Seurat", unload=TRUE)
+library(Seurat, lib.loc = "/home/lebrigand/R-dev/")
+
+```
+
+---
+title: "Single cell transcriptomic analysis on primary canine triple-negative mammary tumor cells infected by an oncolytic vaccinia virus to identify candidate resistance genes."
+author: "K.Lebrigand"
+output:
+  BiocStyle::html_document:
+    code_folding: hide
+    number_sections: yes
+    toc: yes  
+---
+
+# sample2 CCA integration
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=8, fig.width=16}
+
+s2.sain <- readRDS("output/s2.sain.rds")
+s2.inf <- readRDS("output/s2.inf.rds")
+
+plot1 <- DimPlot(object = s2.sain, cols = cell_type_color, label = FALSE)
+plot2 <- DimPlot(object = s2.inf, cols = cell_type_color, label = FALSE)
+plot_grid(plot1,plot2)
+
+s2.sain[['percent.vv']] <- 0
+s2.sain[['percent.early']] <- 0
+s2.sain[['percent.intermediate']] <- 0
+s2.sain[['percent.late']] <- 0
+s2.sain[['color']] <- "green"
+
+s2.sain@meta.data$sample <- "sain"
+s2.inf@meta.data$sample <- "infected"
+
+s2.sain <- RenameCells(s2.sain, add.cell.id = "sain")
+s2.inf <- RenameCells(s2.inf, add.cell.id = "inf")
+s2.sain@meta.data$celltype <- s2.sain@active.ident
+s2.inf@meta.data$celltype <- s2.inf@active.ident
+
+features <- SelectIntegrationFeatures(object.list = c(s2.sain, s2.inf), nfeatures = 3000)
+options(future.globals.maxSize = 2048 * 1024^2)
+list <- PrepSCTIntegration(object.list = c(s2.sain, s2.inf), anchor.features = features, verbose = FALSE)
+
+anchors <- FindIntegrationAnchors(object.list = list, normalization.method = "SCT", anchor.features = features, verbose = FALSE)
+aggr <- IntegrateData(anchorset = anchors, normalization.method = "SCT", verbose = FALSE)
+
+aggr <- RunPCA(aggr, verbose = FALSE)
+aggr <- RunUMAP(aggr, dims = 1:30)
+
+detach("package:Seurat", unload=TRUE)
+library(Seurat)
+
+plots <- DimPlot(aggr, group.by = c("sample", "celltype"), cols = cell_type_color, combine = FALSE)
+plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 3, byrow = TRUE, override.aes = list(size = 3))))
+CombinePlots(plots)
+
+freq_table <- prop.table(x = table(aggr@active.ident, aggr@meta.data[, "sample"]), margin = 2)*100
+freq_table
+
+```
+
+# aggr self-clustering
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=8}
+
+aggr <- FindNeighbors(object = aggr, dims = 1:30)
+aggr <- FindClusters(object = aggr, resolution=0.1)
+DimPlot(object = aggr, reduction = "umap", pt.size = 2, label = TRUE)
+
+```
+
+# High resolution heatmap
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=8, fig.width=10}
+
+cca.markers <- FindAllMarkers(object = aggr, only.pos = TRUE, min.pct = 0.25, thresh.use = 0.25)
+top10 <- cca.markers %>% group_by(cluster) %>% top_n(8, avg_logFC)
+DoHeatmap(aggr, features=top10$gene, size=3.5)
+write.table(cca.markers, file="output/s2.cca.csv", sep=",")
+
+```
+
+# sample2 cca re-labeling, save .rds
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=8}
+
+new.cluster.ids <- c("COL1A2","SCRG1","KRT14")
+names(x = new.cluster.ids) <- levels(x = aggr)
+aggr <- RenameIdents(object = aggr, new.cluster.ids)
+
+my_levels <- c("COL1A2","SCRG1","KRT14")
+# Relevel object@ident
+aggr@active.ident <- factor(x = aggr@active.ident, levels = my_levels)
+
+aggr[['status']] <- 0
+aggr[['status']][which(aggr@meta.data$sample == "sain"),] <- "naive"
+aggr[['status']][which(aggr@meta.data$sample == "infected" & aggr@meta.data$percent.early < 0.01),] <- "bystander"
+aggr[['status']][which(aggr@meta.data$sample == "infected" & aggr@meta.data$percent.early > 0.01),] <- "infected"
+
+plot1 <- DimPlot(object = aggr, cols = cell_type_color, label = FALSE)
+plot2 <- DimPlot(object = aggr, cols = cell_type_color, label = FALSE, group.by = "status")
+plot_grid(plot1,plot2)
+
+aggr[['cluster']] <- aggr@active.ident
+
+saveRDS(aggr, "output/s2.cca.rds")
+
+```
+

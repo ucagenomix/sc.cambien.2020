@@ -1,0 +1,261 @@
+```{r function section, echo=FALSE,include=FALSE}
+
+source("00.import.R")
+
+```
+
+---
+title: "Single cell transcriptomic analysis on primary canine triple-negative mammary tumor cells infected by an oncolytic vaccinia virus to identify candidate resistance genes."
+author: "K.Lebrigand"
+output:
+  BiocStyle::html_document:
+    code_folding: hide
+    number_sections: yes
+    toc: yes  
+---
+
+# sample 2 sain
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=10}
+
+data <- Read10X("data/s2/")
+s2.sain <- CreateSeuratObject(data)
+s2.sain[['sample']] <- "s2.sain"
+
+mito.genes <- c('ATP6','COX1','COX3','CYTB','MT-ATP8','MT-CO2','MT-ND1','MT-ND3','MT-ND4','MT-ND6','ND2','ND4L','ND5')
+dropouts <- Matrix::colSums(s2.sain@assays$RNA@data == 0)/nrow(s2.sain@assays$RNA)
+ribo.genes <- grep(pattern = "^RP[SL]", x = rownames(s2.sain@assays$RNA), value = TRUE)
+percent.mito <- Matrix::colSums(s2.sain@assays$RNA[mito.genes, ])/Matrix::colSums(s2.sain@assays$RNA)
+percent.ribo <- Matrix::colSums(s2.sain@assays$RNA[ribo.genes, ])/Matrix::colSums(s2.sain@assays$RNA)
+s2.sain[['percent.mito']] <- percent.mito
+s2.sain[['percent.ribo']] <- percent.ribo
+s2.sain[['dropouts']] <- dropouts
+VlnPlot(s2.sain, features = c("nFeature_RNA", "nCount_RNA","dropouts","percent.ribo","percent.mito"), ncol=5, cols = "lightsteelblue3")
+dim(s2.sain@assays$RNA)
+s2.sain <- subset(s2.sain, subset = percent.mito < 0.25)
+dim(s2.sain@assays$RNA)
+VlnPlot(s2.sain, features = c("nFeature_RNA", "nCount_RNA","dropouts","percent.ribo","percent.mito"), ncol=5, cols = "lightsteelblue3")
+
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=8}
+
+s2.sain <- SCTransform(object = s2.sain, verbose = FALSE)
+
+s2.sain <- RunPCA(s2.sain, features = VariableFeatures(s2.sain), verbose = FALSE)
+ElbowPlot(object = s2.sain)
+
+s2.sain <- RunUMAP(object = s2.sain, dims = 1:30)
+s2.sain <- FindNeighbors(object = s2.sain, do.plot=TRUE, dims = 1:30)
+s2.sain <- FindClusters(object = s2.sain, resolution=0.4)
+DimPlot(object = s2.sain, label=TRUE)
+
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=14}
+
+s2.sain <- CellCycleScoring(s2.sain, s.features = s.genes, g2m.features = g2m.genes, set.ident = FALSE)
+FeaturePlot(s2.sain, features=c("S.Score","G2M.Score"))
+
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=8, fig.width=10}
+
+markers <- FindAllMarkers(object = s2.sain, only.pos = TRUE, min.pct = 0.25, thresh.use = 0.25)
+top10 <- markers %>% group_by(cluster) %>% top_n(10, avg_logFC)
+DoHeatmap(s2.sain, features=top10$gene, size=3.5)
+
+```
+
+# sample2 sain re-labeling, save .rds
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=8}
+
+new.cluster.ids <- c("SCRG1","COL1A2","SCRG1 cycling","COL1A2 cycling","KRT14")
+names(x = new.cluster.ids) <- levels(x = s2.sain)
+s2.sain <- RenameIdents(object = s2.sain, new.cluster.ids)
+
+my_levels <- c("SCRG1","SCRG1 cycling","COL1A2","COL1A2 cycling","KRT14")
+# Relevel object@ident
+s2.sain@active.ident <- factor(x = s2.sain@active.ident, levels = my_levels)
+DimPlot(object = s2.sain, cols = cell_type_color, label = FALSE)
+
+saveRDS(s2.sain, "output/s2.sain.rds")
+
+freq_table <- prop.table(x = table(s2.sain@active.ident))*100
+df <- as.data.frame(freq_table)
+df$sample <- "sain"
+
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=8, fig.width=10}
+
+markers <- FindAllMarkers(object = s2.sain, only.pos = TRUE, min.pct = 0.25, thresh.use = 0.25)
+top10 <- markers %>% group_by(cluster) %>% top_n(10, avg_logFC)
+DoHeatmap(s2.sain, features=top10$gene, size=3.5)
+write.table(markers, file="output/s2.sain.csv", sep=",")
+
+```
+
+# sample2 infected
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=10}
+
+data <- Read10X("data/s2_infected/")
+s2.inf <- CreateSeuratObject(data)
+s2.inf[['sample']] <- "s2.inf"
+
+genes.vv <- genes.vv[genes.vv %in% rownames(s2.inf@assays$RNA@counts)]
+percent.vv <- Matrix::colSums(s2.inf@assays$RNA@counts[genes.vv, ])/Matrix::colSums(s2.inf@assays$RNA)
+
+genes.early <- genes.early[genes.early %in% rownames(s2.inf@assays$RNA@counts)]
+percent.early <- Matrix::colSums(s2.inf@assays$RNA@counts[genes.early, ])/Matrix::colSums(s2.inf@assays$RNA@counts)
+
+genes.intermediate <- genes.intermediate[genes.intermediate %in% rownames(s2.inf@assays$RNA@counts)]
+percent.intermediate <- Matrix::colSums(s2.inf@assays$RNA@counts[genes.intermediate, ])/Matrix::colSums(s2.inf@assays$RNA@counts)
+
+genes.late <- genes.late[genes.late %in% rownames(s2.inf@assays$RNA@counts)]
+percent.late <- Matrix::colSums(s2.inf@assays$RNA@counts[genes.late, ])/Matrix::colSums(s2.inf@assays$RNA@counts)
+
+# remove vv genes and re-do analysis
+iv = match(genes.vv, rownames(data))
+all(genes.vv==rownames(data)[iv])
+virus <- data[iv,]
+dog_only <- data[-iv,]
+
+s2.inf <- CreateSeuratObject(dog_only)
+s2.inf[['percent.vv']] <- percent.vv
+s2.inf[['percent.early']] <- percent.early
+s2.inf[['percent.intermediate']] <- percent.intermediate
+s2.inf[['percent.late']] <- percent.late
+s2.inf[['color']] <- percent.late
+
+s2.inf[['color']][which(s2.inf@meta.data$percent.vv < 0.01),] <- "#9593a2"
+s2.inf[['color']][which(s2.inf@meta.data$percent.vv > 0.01),] <- "#297c88"
+s2.inf[['color']][which(s2.inf@meta.data$percent.late > 0.02),] <- "#ed4700"
+table(s2.inf@meta.data$color)
+
+mito.genes <- c('ATP6','COX1','COX3','CYTB','MT-ATP8','MT-CO2','MT-ND1','MT-ND3','MT-ND4','MT-ND6','ND2','ND4L','ND5')
+dropouts <- Matrix::colSums(s2.inf@assays$RNA@data == 0)/nrow(s2.inf@assays$RNA)
+ribo.genes <- grep(pattern = "^RP[SL]", x = rownames(s2.inf@assays$RNA), value = TRUE)
+percent.mito <- Matrix::colSums(s2.inf@assays$RNA[mito.genes, ])/Matrix::colSums(s2.inf@assays$RNA)
+percent.ribo <- Matrix::colSums(s2.inf@assays$RNA[ribo.genes, ])/Matrix::colSums(s2.inf@assays$RNA)
+s2.inf[['percent.mito']] <- percent.mito
+s2.inf[['percent.ribo']] <- percent.ribo
+s2.inf[['dropouts']] <- dropouts
+
+VlnPlot(s2.inf, features = c("nFeature_RNA", "nCount_RNA","dropouts","percent.ribo","percent.mito"), ncol=5, cols = "lightsteelblue3")
+dim(s2.inf@assays$RNA)
+
+s2.inf[["VIRUS"]] <- CreateAssayObject(counts = virus)
+DefaultAssay(object = s2.inf) <- "VIRUS"
+s2.inf <- NormalizeData(s2.inf, normalization.method = "LogNormalize", scale.factor = 1000)
+s2.inf <- ScaleData(s2.inf)
+
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=4, fig.width=6}
+
+ggplot(data=s2.inf@meta.data, aes(x=percent.vv,y=percent.mito)) +  geom_point(shape = 21, colour = "black", fill = s2.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("percent.mito = f(percent.vv)") +
+#      geom_abline(slope=1, intercept=-15, linetype=3) +
+      labs(x="percent.vv",y="percent.mito")
+
+DefaultAssay(object = s2.inf) <- "RNA"
+s2.inf <- subset(s2.inf, subset = percent.mito < 0.25 & nCount_RNA > 1000)
+dim(s2.inf)
+
+ggplot(data=s2.inf@meta.data, aes(x=percent.late,y=percent.early)) +  geom_point(shape = 21, colour = "black", fill = s2.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("percent.early = f(percent.late)") +
+#      geom_abline(slope=1, intercept=-15, linetype=3) +
+      labs(x="percent.late",y="percent.early")
+
+ggplot(data=s2.inf@meta.data, aes(x=percent.late,y=percent.intermediate)) +  geom_point(shape = 21, colour = "black", fill = s2.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("percent.intermediate = f(percent.late)") +
+      labs(x="percent.late",y="percent.intermediate")
+
+ggplot(data=s2.inf@meta.data, aes(x=log(nCount_VIRUS,10),y=log(nCount_RNA,10))) +  geom_point(shape = 21, colour = "black", fill = s2.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("Host nCount_RNA = f(nCount_VIRUS)") +
+      labs(x="nCount_VIRUS",y="nCount_RNA")
+
+ggplot(data=s2.inf@meta.data, aes(x=percent.vv,y=nFeature_RNA)) +  geom_point(shape = 21, colour = "black", fill = s2.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("nFeature_RNA = f(percent.vv)") +
+#      geom_abline(slope=1, intercept=-15, linetype=3) +
+      labs(x="percent.vv",y="nFeature_RNA")
+
+
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=8}
+
+s2.inf <- SCTransform(object = s2.inf, verbose = FALSE)
+s2.inf <- RunPCA(s2.inf, features = VariableFeatures(s2.inf), verbose = FALSE)
+ElbowPlot(object = s2.inf)
+
+s2.inf <- RunUMAP(object = s2.inf, dims = 1:30)
+s2.inf <- FindNeighbors(object = s2.inf, do.plot=TRUE, dims = 1:30)
+s2.inf <- FindClusters(object = s2.inf, resolution=0.3)
+DimPlot(object = s2.inf, label=TRUE)
+
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=14}
+
+s2.inf <- CellCycleScoring(s2.inf, s.features = s.genes, g2m.features = g2m.genes)
+FeaturePlot(s2.inf, features=c("S.Score","G2M.Score"))
+FeaturePlot(s2.inf, features=c("percent.early","percent.late"))
+FeaturePlot(s2.inf, features=c("SCRG1"))
+
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=8, fig.width=10}
+
+markers <- FindAllMarkers(object = s2.inf, only.pos = TRUE, min.pct = 0.25, thresh.use = 0.25)
+top10 <- markers %>% group_by(cluster) %>% top_n(8, avg_logFC)
+DoHeatmap(s2.inf, features=top10$gene, size=3.5)
+
+```
+
+# sample2 infected re-labeling, save .rds
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=8}
+
+new.cluster.ids <- c("SCRG1","COL1A2","COL1A2","COL1A2 cycling","SCRG1 cycling","KRT14")
+names(x = new.cluster.ids) <- levels(x = s2.inf)
+s2.inf <- RenameIdents(object = s2.inf, new.cluster.ids)
+
+my_levels <- c("SCRG1","SCRG1 cycling","COL1A2","COL1A2 cycling","KRT14")
+# Relevel object@ident
+s2.inf@active.ident <- factor(x = s2.inf@active.ident, levels = my_levels)
+
+DimPlot(object = s2.inf, cols = cell_type_color)
+
+saveRDS(s2.inf, "output/s2.inf.rds")
+
+freq_table <- prop.table(x = table(s2.inf@active.ident))*100
+df2 <- as.data.frame(freq_table)
+df2$sample <- "infected"
+
+dd <- rbind(df,df2)
+ggplot(dd, aes(sample, y=Freq, fill=Var1)) + 
+    geom_bar(stat="identity") + 
+    geom_label(aes(label = round(Freq,digits=1)), position = position_stack(vjust = 0.5), size = 3)
+
+dd
+
+```
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=8, fig.width=10}
+
+markers <- FindAllMarkers(object = s2.inf, only.pos = TRUE, min.pct = 0.25, thresh.use = 0.25)
+top10 <- markers %>% group_by(cluster) %>% top_n(8, avg_logFC)
+DoHeatmap(s2.inf, features=top10$gene, size=3.5)
+write.table(markers, file="output/s2.inf.csv", sep=",")
+
+```
+

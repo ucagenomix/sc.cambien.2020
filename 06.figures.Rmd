@@ -1,0 +1,132 @@
+```{r function section, echo=FALSE,include=FALSE}
+
+source("00.import.R")
+
+```
+
+---
+title: "Single cell transcriptomic analysis on primary canine triple-negative mammary tumor cells infected by an oncolytic vaccinia virus to identify candidate resistance genes."
+author: "K.Lebrigand"
+output:
+  BiocStyle::html_document:
+    code_folding: hide
+    number_sections: yes
+    toc: yes  
+---
+
+# FIGURE 4
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=14}
+
+pdf("figures/fig4.pdf", width=12, height=6, useDingbats=FALSE)
+
+s2.inf <- readRDS("output/s2.inf.rds")
+s3.inf <- readRDS("output/s3.inf.rds")
+
+plot1 <- ggplot(data=s2.inf@meta.data, aes(x=percent.late,y=percent.early)) +  geom_point(shape = 21, colour = "black", fill = s2.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("Sample 2") +
+      labs(x="Viral RNA fraction (late genes)",y="Viral RNA fraction (early genes)")
+plot2 <- ggplot(data=s3.inf@meta.data, aes(x=percent.late,y=percent.early)) +  geom_point(shape = 21, colour = "black", fill = s3.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("Sample 3") +
+      labs(x="Viral RNA fraction (late genes)",y="Viral RNA fraction (early genes)")
+CombinePlots(plots = list(plot1, plot2), ncol=2)
+
+x <- cor.test(s2.inf@meta.data$percent.late, s2.inf@meta.data$percent.early, method="pearson")$estimate
+x*x
+
+x <- cor.test(s3.inf@meta.data$percent.late, s3.inf@meta.data$percent.early, method="pearson")$estimate
+x*x
+
+
+plot1 <- ggplot(data=s2.inf@meta.data, aes(x=percent.late,y=percent.intermediate)) +  geom_point(shape = 21, colour = "black", fill = s2.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("Sample 2") +
+      labs(x="Viral RNA fraction (late genes)",y="Viral RNA fraction (intermediate genes)")
+plot2 <- ggplot(data=s3.inf@meta.data, aes(x=percent.late,y=percent.intermediate)) +  geom_point(shape = 21, colour = "black", fill = s3.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("Sample 3") +
+      labs(x="Viral RNA fraction (late genes)",y="Viral RNA fraction (intermediate genes)")
+CombinePlots(plots = list(plot1, plot2), ncol=2)
+
+x <- cor.test(s2.inf@meta.data$percent.late, s2.inf@meta.data$percent.intermediate, method="pearson")$estimate
+x*x
+
+x <- cor.test(s3.inf@meta.data$percent.late, s3.inf@meta.data$percent.intermediate, method="pearson")$estimate
+x*x
+
+plot1 <- ggplot(data=s2.inf@meta.data, aes(x=log(nCount_VIRUS,10),y=log(nCount_RNA,10))) +  geom_point(shape = 21, colour = "black", fill = s2.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("Sample 2") +
+      labs(x="Viral RNA count (log)",y="Cellular RNA count (log)")
+
+plot2 <- ggplot(data=s3.inf@meta.data, aes(x=log(nCount_VIRUS,10),y=log(nCount_RNA,10))) +  geom_point(shape = 21, colour = "black", fill = s3.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("Sample 3") +
+      labs(x="Viral RNA count (log)",y="Cellular RNA count (log)")
+CombinePlots(plots = list(plot1, plot2), ncol=2)
+
+
+plot1 <- ggplot(data=s2.inf@meta.data, aes(x=percent.vv,y=nFeature_RNA)) +  geom_point(shape = 21, colour = "black", fill = s2.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("Sample 2") +
+      labs(x="Viral RNA fraction",y="Cellular gene count")
+
+plot2 <- ggplot(data=s3.inf@meta.data, aes(x=percent.vv,y=nFeature_RNA)) +  geom_point(shape = 21, colour = "black", fill = s3.inf@meta.data$color) +
+      theme_bw() + theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank()) +
+      ggtitle("Sample 3") +
+      labs(x="Viral RNA fraction",y="Cellular gene count")
+CombinePlots(plots = list(plot1, plot2), ncol=2)
+
+dev.off()
+
+```
+
+# FIGURE 5
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=10}
+
+pdf("figures/fig5.pdf", width=18, height=6, useDingbats=FALSE)
+
+s2.cca <- readRDS("output/s2.cca.rds")
+
+s2.cca[['legend']] <- "+virus"
+s2.cca[['legend']][which(s2.cca@meta.data$sample == "sain"),] <- "-virus"
+
+plot1 <- DimPlot(object = s2.cca, cols = cell_type_color, label = FALSE)
+plot2 <- DimPlot(object = s2.cca, cols = cell_type_color, label = FALSE, group.by = "legend")
+plot3 <- DimPlot(object = s2.cca, cols = cell_type_color, label = FALSE, group.by = "status")
+
+CombinePlots(plots = list(plot1, plot2, plot3), ncol=3)
+
+dev.off()
+
+kable(table(s2.cca@active.ident,s2.cca@meta.data$status))
+
+```
+
+# FIGURE 5
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=10}
+
+pdf("figures/fig6.pdf", width=18, height=6, useDingbats=FALSE)
+
+s3.cca <- readRDS("output/s3.cca.rds")
+
+s3.cca[['legend']] <- "+virus"
+s3.cca[['legend']][which(s3.cca@meta.data$sample == "sain"),] <- "-virus"
+
+plot1 <- DimPlot(object = s3.cca, cols = cell_type_color, label = FALSE)
+plot2 <- DimPlot(object = s3.cca, cols = cell_type_color, label = FALSE, group.by = "legend")
+plot3 <- DimPlot(object = s3.cca, cols = cell_type_color, label = FALSE, group.by = "status")
+
+CombinePlots(plots = list(plot1, plot2, plot3), ncol=3)
+
+dev.off()
+
+kable(table(s3.cca@active.ident,s3.cca@meta.data$status))
+
+
+```
+

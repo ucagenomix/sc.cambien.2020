@@ -1,0 +1,128 @@
+```{r function section, echo=FALSE,include=FALSE}
+
+source("00.import.R")
+
+library(devtools)
+library(ggplot2)
+
+detach("package:Seurat", unload=TRUE)
+library(Seurat, lib.loc = "/home/lebrigand/R-dev/")
+
+```
+
+---
+title: "Single cell transcriptomic analysis on primary canine triple-negative mammary tumor cells infected by an oncolytic vaccinia virus to identify candidate resistance genes."
+author: "K.Lebrigand"
+output:
+  BiocStyle::html_document:
+    code_folding: hide
+    number_sections: yes
+    toc: yes  
+---
+
+# sample3 CCA integration
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=8, fig.width=16}
+
+s3.sain <- readRDS("output/s3.sain.rds")
+s3.inf <- readRDS("output/s3.inf.rds")
+
+plot1 <- DimPlot(object = s3.sain, cols = cell_type_color, label = FALSE)
+plot2 <- DimPlot(object = s3.inf, cols = cell_type_color, label = FALSE)
+plot_grid(plot1,plot2)
+
+s3.sain[['percent.vv']] <- 0
+s3.sain[['percent.early']] <- 0
+s3.sain[['percent.intermediate']] <- 0
+s3.sain[['percent.late']] <- 0
+s3.sain[['color']] <- "green"
+
+s3.sain@meta.data$sample <- "sain"
+s3.inf@meta.data$sample <- "infected"
+
+s3.sain <- RenameCells(s3.sain, add.cell.id = "sain")
+s3.inf <- RenameCells(s3.inf, add.cell.id = "inf")
+s3.sain@meta.data$celltype <- s3.sain@active.ident
+s3.inf@meta.data$celltype <- s3.inf@active.ident
+
+features <- SelectIntegrationFeatures(object.list = c(s3.sain, s3.inf), nfeatures = 3000)
+options(future.globals.maxSize = 2048 * 1024^2)
+list <- PrepSCTIntegration(object.list = c(s3.sain, s3.inf), anchor.features = features, verbose = FALSE)
+
+anchors <- FindIntegrationAnchors(object.list = list, normalization.method = "SCT", anchor.features = features, verbose = FALSE)
+s3.cca <- IntegrateData(anchorset = anchors, normalization.method = "SCT", verbose = FALSE)
+
+s3.cca <- RunPCA(s3.cca, verbose = FALSE)
+s3.cca <- RunUMAP(s3.cca, dims = 1:30)
+
+detach("package:Seurat", unload=TRUE)
+library(Seurat)
+
+plots <- DimPlot(s3.cca, cols = cell_type_color, group.by = c("sample", "celltype"), combine = FALSE)
+plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 3, byrow = TRUE, override.aes = list(size = 3))))
+CombinePlots(plots)
+
+freq_table <- prop.table(x = table(s3.cca@active.ident, s3.cca@meta.data[, "sample"]), margin = 2)*100
+freq_table
+
+```
+
+# s3.cca self-clustering
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=6, fig.width=8}
+
+s3.cca <- FindNeighbors(object = s3.cca, dims = 1:30)
+s3.cca <- FindClusters(object = s3.cca, resolution=0.1)
+DimPlot(object = s3.cca, label = TRUE)
+
+```
+
+# High resolution heatmap
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=8, fig.width=10}
+
+cca.markers <- FindAllMarkers(object = s3.cca, only.pos = TRUE, min.pct = 0.25, thresh.use = 0.25)
+top10 <- cca.markers %>% group_by(cluster) %>% top_n(8, avg_logFC)
+DoHeatmap(s3.cca, features=top10$gene, size=3.5)
+
+```
+
+# sample3 cca re-labeling, save .rds
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=8, fig.width=16}
+
+new.cluster.ids <- c("SPP1","CA2","COL1A2","MDH1")
+names(x = new.cluster.ids) <- levels(x = s3.cca)
+s3.cca <- RenameIdents(object = s3.cca, new.cluster.ids)
+
+my_levels <- c("SPP1","CA2","COL1A2","MDH1")
+# Relevel object@ident
+s3.cca@active.ident <- factor(x = s3.cca@active.ident, levels = my_levels)
+
+s3.cca[['status']] <- 0
+s3.cca[['status']][which(s3.cca@meta.data$sample == "sain"),] <- "naive"
+s3.cca[['status']][which(s3.cca@meta.data$sample == "infected" & s3.cca@meta.data$percent.early < 0.01),] <- "bystander"
+s3.cca[['status']][which(s3.cca@meta.data$sample == "infected" & s3.cca@meta.data$percent.early > 0.01),] <- "infected"
+
+plot1 <- DimPlot(object = s3.cca, cols = cell_type_color, label = FALSE)
+plot2 <- DimPlot(object = s3.cca, cols = cell_type_color, label = FALSE, group.by = "status")
+plot_grid(plot1,plot2)
+
+s3.cca[['cluster']] <- s3.cca@active.ident
+
+saveRDS(s3.cca, "output/s3.cca.rds")
+
+```
+
+# High resolution heatmap
+
+```{r message=FALSE, warning=FALSE, echo=FALSE, eval=T, fig.height=8, fig.width=10}
+
+cca.markers <- FindAllMarkers(object = s3.cca, only.pos = TRUE, min.pct = 0.25, thresh.use = 0.25)
+top10 <- cca.markers %>% group_by(cluster) %>% top_n(8, avg_logFC)
+DoHeatmap(s3.cca, features=top10$gene, size=3.5)
+
+write.table(cca.markers, file="output/s3.cca.csv", sep=",")
+
+```
+
